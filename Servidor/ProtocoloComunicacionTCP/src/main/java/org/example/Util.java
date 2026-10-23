@@ -7,7 +7,7 @@ import java.util.Properties;
 
 public class Util {
 
-    private static final String CONFIG_PATH = "./resources/config/tcpConfig.properties";
+    private static final String CONFIG_PATH = "./resources/config/config.properties";
 
     private static final Properties properties = new Properties();
 
