@@ -21,7 +21,6 @@ public class ImpUsuariosDisponibles implements IUsuariosDisponibles {
         if (usuariosDisponibles != null){
             for (UsuarioDTO usuarioDTO : usuariosDisponibles){
                 if(usuarioDTO.codigo().equals(codigo) && usuarioDTO.contrasena().equals(contrasena)){
-                    System.out.println("Usuario disponible encontrado");
                     return usuarioDTO.getUsuarioLimpio();
                 }
             }
