@@ -13,6 +13,7 @@ public class ConexionTCP implements IConexion {
     private final Socket conexion;
     private final DataInputStream entrada;
     private final DataOutputStream salida;
+    private final Object bloqueoEscritura = new Object();
 
     public ConexionTCP(Socket conexion) throws IOException {
         this.conexion = conexion;
@@ -27,7 +28,7 @@ public class ConexionTCP implements IConexion {
     }
 
     @Override
-    public synchronized void enviar(byte[] datos)
+    public void enviar(byte[] datos)
             throws IOException {
 
         comprobarConexion();
@@ -44,13 +45,15 @@ public class ConexionTCP implements IConexion {
             );
         }
 
-        salida.writeInt(datos.length);
-        salida.write(datos);
-        salida.flush();
+        synchronized (bloqueoEscritura) {
+            salida.writeInt(datos.length);
+            salida.write(datos);
+            salida.flush();
+        }
     }
 
     @Override
-    public synchronized byte[] recibir() throws IOException {
+    public byte[] recibir() throws IOException {
         comprobarConexion();
 
         int longitud = entrada.readInt();
@@ -71,7 +74,7 @@ public class ConexionTCP implements IConexion {
     }
 
     @Override
-    public synchronized void desconectar() throws IOException {
+    public void desconectar() throws IOException {
         conexion.close();
     }
 

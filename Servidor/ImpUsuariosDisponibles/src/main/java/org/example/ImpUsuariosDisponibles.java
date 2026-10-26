@@ -7,7 +7,7 @@ public class ImpUsuariosDisponibles implements IUsuariosDisponibles {
     RepositorioUsuario repositorioUsuario;
 
     public ImpUsuariosDisponibles(){
-        repositorioUsuario = Factory.getRepositorioUsuario();
+        repositorioUsuario = UsuariosFactory.getRepositorioUsuario();
         getUsuarios();
     }
 
@@ -20,7 +20,9 @@ public class ImpUsuariosDisponibles implements IUsuariosDisponibles {
     public UsuarioDTO comprobarUsuario(String codigo, String contrasena) {
         if (usuariosDisponibles != null){
             for (UsuarioDTO usuarioDTO : usuariosDisponibles){
-                if(usuarioDTO.codigo().equals(codigo) && usuarioDTO.contrasena().equals(contrasena)){
+                if(usuarioDTO != null
+                        && usuarioDTO.codigo().equals(codigo)
+                        && usuarioDTO.contrasena().equals(contrasena)){
                     return usuarioDTO.getUsuarioLimpio();
                 }
             }
