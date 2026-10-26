@@ -1,10 +1,16 @@
 package org.example.ConexionesClientes;
 import org.example.*;
-import org.example.Fabrica.Fabrica;
+import org.example.PFabrica.Fabrica;
+import org.example.Procesamiento.ProcesarMensaje;
+import org.example.Procesamiento.UtilMapper;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 
 public class GestorComunicaciones {
 
@@ -21,6 +27,7 @@ public class GestorComunicaciones {
     private final GestorConexiones gestorConexiones;
     private final IClienteServidor clienteServidor;
     private final IUsuariosDisponibles usuariosDisponibles;
+    private final ProcesarMensaje procesarMensaje;
 
     private Thread hiloEscucha;
     private volatile boolean ejecutando;
@@ -30,6 +37,7 @@ public class GestorComunicaciones {
         this.gestorConexiones = Fabrica.getGestorConexiones();
         this.clienteServidor = Fabrica.getClienteServidor();
         this.usuariosDisponibles = Fabrica.getUsuariosDisponibles();
+        this.procesarMensaje = new ProcesarMensaje();
     }
 
     public synchronized void iniciar() {
@@ -106,6 +114,8 @@ public class GestorComunicaciones {
                 return;
             }
 
+            Map<Long, ImagenPendiente> imagenes = new HashMap<>();
+
             while (ejecutando && cliente.estaActiva()) {
                 Paquete paquete = clienteServidor.obtener(cliente.recibirDatos());
 
@@ -122,6 +132,7 @@ public class GestorComunicaciones {
                 }
 
                 reenviar(cliente, paquete);
+                procesarPaquete(cliente, paquete, imagenes);
             }
 
         } catch (IOException e) {
@@ -189,6 +200,114 @@ public class GestorComunicaciones {
         return true;
     }
 
+    private void procesarPaquete(
+            ConexionCliente cliente,
+            Paquete paquete,
+            Map<Long, ImagenPendiente> imagenes) {
+
+        try {
+            if (TEXTO.equals(paquete.tipo())) {
+                Paquete normalizado = new Paquete(
+                        paquete.tipo(),
+                        cliente.getCodigoUsuario(),
+                        paquete.receptor(),
+                        paquete.id(),
+                        paquete.parte(),
+                        paquete.total(),
+                        paquete.nombreArchivo(),
+                        paquete.hash(),
+                        paquete.datos()
+                );
+
+                procesarMensaje.procesarMensaje(
+                        UtilMapper.paqueteToMensajeProcesadoDTO(normalizado)
+                );
+                return;
+            }
+
+            if (IMAGEN_INICIO.equals(paquete.tipo())) {
+                ImagenPendiente imagen = new ImagenPendiente(
+                        paquete.nombreArchivo(),
+                        paquete.total(),
+                        paquete.hash()
+                );
+
+                if (paquete.datos().length > 0) {
+                    imagen.agregar(paquete.parte(), paquete.datos());
+                }
+
+                imagenes.put(paquete.id(), imagen);
+                return;
+            }
+
+            if (IMAGEN_PARTE.equals(paquete.tipo())) {
+                ImagenPendiente imagen = imagenes.get(paquete.id());
+
+                if (imagen == null) {
+                    System.err.println(
+                            "Fragmento sin inicio para la imagen "
+                                    + paquete.id()
+                    );
+                    return;
+                }
+
+                imagen.agregar(paquete.parte(), paquete.datos());
+                return;
+            }
+
+            if (IMAGEN_FIN.equals(paquete.tipo())) {
+                ImagenPendiente imagen = imagenes.remove(paquete.id());
+
+                if (imagen == null) {
+                    System.err.println(
+                            "Fin sin inicio para la imagen "
+                                    + paquete.id()
+                    );
+                    return;
+                }
+
+                if (paquete.datos().length > 0) {
+                    imagen.agregar(paquete.parte(), paquete.datos());
+                }
+
+                if (imagen.faltanPartes()) {
+                    System.err.println(
+                            "Imagen incompleta "
+                                    + paquete.id()
+                                    + ": se recibieron "
+                                    + imagen.cantidadPartes()
+                                    + " de "
+                                    + imagen.total()
+                    );
+                    return;
+                }
+
+                Paquete completa = new Paquete(
+                        IMAGEN_FIN,
+                        cliente.getCodigoUsuario(),
+                        paquete.receptor(),
+                        paquete.id(),
+                        1,
+                        1,
+                        imagen.nombreArchivo(),
+                        imagen.hash(),
+                        imagen.unir()
+                );
+
+                procesarMensaje.procesarMensaje(
+                        UtilMapper.paqueteToMensajeProcesadoDTO(completa)
+                );
+            }
+
+        } catch (RuntimeException e) {
+            System.err.println(
+                    "No se pudo procesar el paquete "
+                            + paquete.tipo()
+                            + ": " + e.getMessage()
+            );
+        }
+    }
+
     private String validar(Paquete paquete) {
         String tipo = paquete.tipo();
 
@@ -214,6 +333,9 @@ public class GestorComunicaciones {
             }
             if (paquete.nombreArchivo().isBlank()) {
                 return "NOMBRE_INVALIDO";
+            }
+            if (!formatoImagenValido(paquete.nombreArchivo())) {
+                return "FORMATO_INVALIDO";
             }
             return null;
         }
@@ -248,6 +370,14 @@ public class GestorComunicaciones {
         }
 
         return "TIPO_NO_VALIDO";
+    }
+
+    private boolean formatoImagenValido(String nombreArchivo) {
+        String nombre = nombreArchivo.toLowerCase();
+
+        return nombre.endsWith(".jpg")
+                || nombre.endsWith(".jpeg")
+                || nombre.endsWith(".png");
     }
 
     private void reenviar(ConexionCliente origen, Paquete paquete) {
@@ -344,5 +474,57 @@ public class GestorComunicaciones {
         gestorConexiones.cerrarTodas();
 
         System.out.println("Servidor detenido.");
+    }
+
+    private static final class ImagenPendiente {
+
+        private final String nombreArchivo;
+        private final int total;
+        private final String hash;
+        private final Map<Integer, byte[]> partes = new TreeMap<>();
+
+        private ImagenPendiente(String nombreArchivo, int total, String hash) {
+            this.nombreArchivo = nombreArchivo;
+            this.total = total;
+            this.hash = hash;
+        }
+
+        private void agregar(int parte, byte[] datos) {
+            if (datos == null || datos.length == 0) {
+                return;
+            }
+
+            partes.put(parte, datos);
+        }
+
+        private boolean faltanPartes() {
+            return partes.size() < total;
+        }
+
+        private int cantidadPartes() {
+            return partes.size();
+        }
+
+        private int total() {
+            return total;
+        }
+
+        private String nombreArchivo() {
+            return nombreArchivo;
+        }
+
+        private String hash() {
+            return hash;
+        }
+
+        private byte[] unir() {
+            ByteArrayOutputStream salida = new ByteArrayOutputStream();
+
+            for (byte[] parte : partes.values()) {
+                salida.writeBytes(parte);
+            }
+
+            return salida.toByteArray();
+        }
     }
 }

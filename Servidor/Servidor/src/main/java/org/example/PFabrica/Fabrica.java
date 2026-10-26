@@ -1,9 +1,10 @@
-package org.example.Fabrica;
+package org.example.PFabrica;
 
 
 import org.example.*;
 import org.example.ConexionesClientes.ConexionCliente;
 import org.example.ConexionesClientes.GestorConexiones;
+import org.example.Procesamiento.aplicarServicios;
 
 public class Fabrica {
 
@@ -22,5 +23,13 @@ public class Fabrica {
 
     public static IUsuariosDisponibles getUsuariosDisponibles() {
         return new ImpUsuariosDisponibles();
+    }
+
+    public static IServiciosDisponibles getServiciosDisponibles() {
+        return new ImpServiciosDisponibles();
+    }
+
+    public static aplicarServicios getAplicarServicios() {
+        return new aplicarServicios();
     }
 }
