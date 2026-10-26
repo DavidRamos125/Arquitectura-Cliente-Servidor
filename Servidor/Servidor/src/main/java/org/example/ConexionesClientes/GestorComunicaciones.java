@@ -1,6 +1,11 @@
 package org.example.ConexionesClientes;
 import org.example.*;
+import org.example.AlmacenarInformacion.ImpAlmacenarInformacion;
+import org.example.Fachada.Factory;
+import org.example.LogDeEventos.ILogDeEventos;
+import org.example.LogDeEventos.ImpLogDeEventos;
 import org.example.PFabrica.Fabrica;
+import org.example.Persistencia.PersistenciaMemoria;
 import org.example.Procesamiento.ProcesarMensaje;
 import org.example.Procesamiento.UtilMapper;
 
@@ -10,6 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 
 public class GestorComunicaciones {
@@ -29,6 +35,7 @@ public class GestorComunicaciones {
     private final IUsuariosDisponibles usuariosDisponibles;
     private final ProcesarMensaje procesarMensaje;
 
+    private ILogDeEventos logDeEventos;
     private Thread hiloEscucha;
     private volatile boolean ejecutando;
 
@@ -167,6 +174,11 @@ public class GestorComunicaciones {
                 );
             }
 
+            registrarDesconexion(
+                    cliente.getCodigoUsuario(),
+                    "Conexión finalizada"
+            );
+
             System.out.println(
                     "Conexión finalizada: "
                             + cliente.getIdConexion()
@@ -194,10 +206,73 @@ public class GestorComunicaciones {
 
         cliente.establecerUsuarioAutenticado(autenticado.codigo());
         responder(cliente, OK, "LOGIN");
+        registrarConexion(autenticado.codigo(), "Autenticado");
 
         System.out.println("Usuario autenticado: " + autenticado.codigo());
 
         return true;
+    }
+
+    private ILogDeEventos obtenerLogDeEventos() {
+        if (logDeEventos == null) {
+            try {
+                logDeEventos = Factory.getLogDeEventosImp();
+            } catch (RuntimeException e) {
+                System.err.println(
+                        "Logs de eventos no disponibles, usando memoria: "
+                                + e.getMessage()
+                );
+                logDeEventos = new ImpLogDeEventos(
+                        new ImpAlmacenarInformacion(
+                                PersistenciaMemoria.getInstance()
+                        )
+                );
+            }
+        }
+
+        return logDeEventos;
+    }
+
+    private void registrarConexion(String usuario, String detalle) {
+        ILogDeEventos logs = obtenerLogDeEventos();
+
+        if (logs == null) {
+            return;
+        }
+
+        try {
+            logs.registrarConexion(usuario, detalle);
+        } catch (RuntimeException e) {
+            System.err.println("No se pudo registrar la conexión: " + e.getMessage());
+        }
+    }
+
+    private void registrarDesconexion(String usuario, String detalle) {
+        ILogDeEventos logs = obtenerLogDeEventos();
+
+        if (logs == null) {
+            return;
+        }
+
+        try {
+            logs.registrarDesconexion(usuario, detalle);
+        } catch (RuntimeException e) {
+            System.err.println("No se pudo registrar la desconexión: " + e.getMessage());
+        }
+    }
+
+    private void registrarMensajeEnviado(String emisor, String receptor, String detalle) {
+        ILogDeEventos logs = obtenerLogDeEventos();
+
+        if (logs == null) {
+            return;
+        }
+
+        try {
+            logs.registrarMensajeEnviado(emisor, receptor, detalle);
+        } catch (RuntimeException e) {
+            System.err.println("No se pudo registrar el mensaje: " + e.getMessage());
+        }
     }
 
     private void procesarPaquete(
@@ -415,6 +490,11 @@ public class GestorComunicaciones {
         }
 
         if (TEXTO.equals(paquete.tipo()) || IMAGEN_FIN.equals(paquete.tipo())) {
+            registrarMensajeEnviado(
+                    origen.getCodigoUsuario(),
+                    paquete.receptor(),
+                    paquete.tipo()
+            );
             responder(origen, OK, "ENVIADO");
         }
     }
@@ -460,6 +540,22 @@ public class GestorComunicaciones {
                             + e.getMessage()
             );
         }
+    }
+
+    public boolean estaEjecutando() {
+        return ejecutando;
+    }
+
+    public Set<String> usuariosConectados() {
+        return gestorConexiones.listarUsuariosConectados();
+    }
+
+    public int contarConexiones() {
+        return gestorConexiones.contarConexiones();
+    }
+
+    public void desconectarUsuario(String codigoUsuario) {
+        gestorConexiones.cerrarConexionesUsuario(codigoUsuario);
     }
 
     public synchronized void detener() {

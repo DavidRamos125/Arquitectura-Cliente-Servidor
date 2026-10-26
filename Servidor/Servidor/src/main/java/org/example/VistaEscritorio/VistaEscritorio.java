@@ -3,6 +3,7 @@ package org.example.VistaEscritorio;
 import org.example.DTORecords.LogEventoDTO;
 import org.example.DTORecords.MensajeProcesadoDTO;
 import org.example.FachadaServicios.FachadaServicios;
+import org.example.UsuarioDTO;
 import org.example.UtileriasVarias.IVista;
 import org.example.UtileriasVarias.TipoContenido;
 
@@ -22,9 +23,9 @@ import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.function.Consumer;
 
 public class VistaEscritorio extends JFrame implements IVista {
@@ -41,10 +42,10 @@ public class VistaEscritorio extends JFrame implements IVista {
     private final Color VERDE = new Color(0x00C853);
     private final Color SELECCION = new Color(0xCCCCFF);
 
-    private final List<String[]> conexiones = new ArrayList<>();   // {nombre, ip}
-    private final List<MensajeProcesadoDTO> mensajes = fachadaServicios.getMensajesTodos();
-    private final List<LogEventoDTO> logs = fachadaServicios.getLogDeEventos();
-    private final String[] usuarios = {"Alex", "Juan", "Fabian", "Pepito Perez", "Todos"};
+    private final List<String[]> conexiones = new ArrayList<>();   // {usuario, estado}
+    private final List<MensajeProcesadoDTO> mensajes = new ArrayList<>();
+    private final List<LogEventoDTO> logs = new ArrayList<>();
+    private final List<String[]> usuarios = new ArrayList<>();     // {codigo, nombre}
 
     private JPanel panelConexiones, panelListaMensajes;
     private JScrollPane scrollMensajes;
@@ -55,23 +56,42 @@ public class VistaEscritorio extends JFrame implements IVista {
     private String destinatario = "Todos";
     private int mensajeSeleccionado = -1;
     private final String PLACEHOLDER = "Ingrese el mensaje...";
+    private Timer timerConexiones;
 
     @Override
     public void iniciar() {
-        this.setVisible(true);
+        try {
+            if (!fachadaServicios.servidorActivo()) {
+                fachadaServicios.iniciarServidor();
+                log("INICIO", ADMIN, null, "Servidor iniciado");
+            }
+        } catch (RuntimeException e) {
+            JOptionPane.showMessageDialog(
+                    this,
+                    "No se pudo iniciar el servidor: " + e.getMessage(),
+                    "Error",
+                    JOptionPane.ERROR_MESSAGE
+            );
+        }
+
+        iniciarActualizacionConexiones();
+        refrescarConexiones();
+        setVisible(true);
     }
 
     public VistaEscritorio() {
         super("Administración del Servidor Mensajería");
-        setDefaultCloseOperation(EXIT_ON_CLOSE);
+        setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
         setSize(660, 470);
         setMinimumSize(new Dimension(620, 440));
         setLocationRelativeTo(null);
 
-        // datos de ejemplo (del mockup)
-        conexiones.add(new String[]{"Pepito Perez", "192.168.1.4/28"});
-        conexiones.add(new String[]{"Alex", "192.168.1.2/28"});
-        conexiones.add(new String[]{"Fabian", "192.168.1.5/28"});
+        addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowClosing(WindowEvent e) {
+                cerrarAplicacion();
+            }
+        });
 
         JPanel root = new JPanel(new GridBagLayout());
         root.setBorder(new EmptyBorder(12, 12, 8, 12));
@@ -118,9 +138,10 @@ public class VistaEscritorio extends JFrame implements IVista {
         c.insets = new Insets(0, 0, 0, 0);
         root.add(crearBarraEnvio(), c);
 
+        cargarMensajes();
+        cargarLogs();
         refrescarConexiones();
         refrescarLista();
-        log("INICIO", "Servidor", null, "Servidor iniciado");
     }
 
     // ---------- Paneles ----------
@@ -147,7 +168,34 @@ public class VistaEscritorio extends JFrame implements IVista {
     }
 
     private void refrescarConexiones() {
+        if (panelConexiones == null) {
+            return;
+        }
+
+        Set<String> conectados;
+
+        try {
+            conectados = fachadaServicios.getUsuariosConectados();
+        } catch (RuntimeException e) {
+            conectados = Set.of();
+        }
+
+        conexiones.clear();
+
+        for (String usuario : conectados.stream().sorted().toList()) {
+            conexiones.add(new String[]{usuario, "Conectado"});
+        }
+
         panelConexiones.removeAll();
+
+        if (conexiones.isEmpty()) {
+            JLabel vacio = new JLabel("Sin conexiones activas");
+            vacio.setFont(vacio.getFont().deriveFont(Font.PLAIN, 11f));
+            vacio.setForeground(Color.GRAY);
+            vacio.setBorder(new EmptyBorder(4, 2, 0, 0));
+            panelConexiones.add(vacio);
+        }
+
         for (String[] con : new ArrayList<>(conexiones)) {
             JPanel fila = new JPanel(new BorderLayout(6, 0));
             fila.setBackground(Color.WHITE);
@@ -167,8 +215,8 @@ public class VistaEscritorio extends JFrame implements IVista {
             x.setFocusPainted(false);
             x.setFont(x.getFont().deriveFont(11f));
             x.addActionListener(e -> {
-                conexiones.remove(con);
-                log("CONEXION_CERRADA", ADMIN, con[0], "IP " + con[1]);
+                fachadaServicios.desconectarUsuario(con[0]);
+                log("CONEXION_CERRADA", ADMIN, con[0], "Sesión finalizada");
                 refrescarConexiones();
             });
             caja.add(txt, BorderLayout.CENTER);
@@ -181,13 +229,18 @@ public class VistaEscritorio extends JFrame implements IVista {
     }
 
     private JPanel crearPanelUsuarios() {
+        cargarUsuarios();
+
         JPanel p = panelBase("Usuarios");
         JPanel lista = new JPanel();
         lista.setLayout(new BoxLayout(lista, BoxLayout.Y_AXIS));
         lista.setBackground(Color.WHITE);
         lista.setBorder(new EmptyBorder(2, 10, 6, 40));
 
-        for (String u : usuarios) {
+        for (String[] usuario : usuarios) {
+            String codigo = usuario[0];
+            String nombreUsuario = usuario[1];
+
             JPanel fila = new JPanel(new BorderLayout(8, 0));
             fila.setBackground(Color.WHITE);
             fila.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
@@ -200,10 +253,10 @@ public class VistaEscritorio extends JFrame implements IVista {
             rb.setSelectedIcon(new CirculoIcon(AZUL, 14, true));
             rb.setBorder(null);
             grupoUsuarios.add(rb);
-            rb.addActionListener(e -> destinatario = u);
-            if (u.equals("Todos")) rb.setSelected(true);
+            rb.addActionListener(e -> destinatario = codigo);
+            if ("Todos".equals(codigo)) rb.setSelected(true);
 
-            JLabel nombre = new JLabel(u);
+            JLabel nombre = new JLabel(nombreUsuario);
             nombre.setBorder(new CompoundBorder(new LineBorder(Color.BLACK, 1, true), new EmptyBorder(2, 4, 2, 4)));
             nombre.setFont(nombre.getFont().deriveFont(Font.PLAIN, 12f));
             nombre.addMouseListener(new MouseAdapter() {
@@ -218,6 +271,30 @@ public class VistaEscritorio extends JFrame implements IVista {
         }
         p.add(lista, BorderLayout.CENTER);
         return p;
+    }
+
+    private void cargarUsuarios() {
+        usuarios.clear();
+
+        for (UsuarioDTO usuario : fachadaServicios.getUsuarios()) {
+            if (usuario == null) {
+                continue;
+            }
+
+            usuarios.add(new String[]{
+                    usuario.codigo(),
+                    usuario.nombre() + " " + usuario.apellidos()
+            });
+        }
+
+        if (usuarios.isEmpty()) {
+            usuarios.add(new String[]{"Alex", "Alex"});
+            usuarios.add(new String[]{"Juan", "Juan"});
+            usuarios.add(new String[]{"Fabian", "Fabian"});
+            usuarios.add(new String[]{"Pepito Perez", "Pepito Perez"});
+        }
+
+        usuarios.add(new String[]{"Todos", "Todos"});
     }
 
     private JPanel crearPanelMensajes() {
@@ -235,8 +312,14 @@ public class VistaEscritorio extends JFrame implements IVista {
         g.add(btnMensajes);
         g.add(btnLogs);
         btnMensajes.setSelected(true);
-        btnMensajes.addActionListener(e -> refrescarLista());
-        btnLogs.addActionListener(e -> refrescarLista());
+        btnMensajes.addActionListener(e -> {
+            cargarMensajes();
+            refrescarLista();
+        });
+        btnLogs.addActionListener(e -> {
+            cargarLogs();
+            refrescarLista();
+        });
         tabs.add(btnMensajes);
         tabs.add(btnLogs);
 
@@ -246,7 +329,11 @@ public class VistaEscritorio extends JFrame implements IVista {
         refresh.setBorderPainted(false);
         refresh.setContentAreaFilled(false);
         refresh.setFocusPainted(false);
-        refresh.addActionListener(e -> refrescarLista());
+        refresh.addActionListener(e -> {
+            cargarMensajes();
+            cargarLogs();
+            refrescarLista();
+        });
 
         header.add(tabs, BorderLayout.WEST);
         header.add(refresh, BorderLayout.EAST);
@@ -296,6 +383,61 @@ public class VistaEscritorio extends JFrame implements IVista {
             JScrollBar sb = scrollMensajes.getVerticalScrollBar();
             sb.setValue(sb.getMaximum());
         });
+    }
+
+    private void cargarMensajes() {
+        try {
+            mensajes.clear();
+            mensajes.addAll(fachadaServicios.getMensajesPersistidos());
+
+            if (mensajeSeleccionado >= mensajes.size()) {
+                mensajeSeleccionado = -1;
+            }
+        } catch (RuntimeException e) {
+            System.err.println(
+                    "No se pudieron cargar los mensajes: "
+                            + e.getMessage()
+            );
+        }
+    }
+
+    private void cargarLogs() {
+        try {
+            logs.clear();
+            logs.addAll(fachadaServicios.getLogsPersistidos());
+        } catch (RuntimeException e) {
+            System.err.println(
+                    "No se pudieron cargar los logs: "
+                            + e.getMessage()
+            );
+        }
+    }
+
+    private void iniciarActualizacionConexiones() {
+        if (timerConexiones != null) {
+            return;
+        }
+
+        timerConexiones = new Timer(1500, e -> refrescarConexiones());
+        timerConexiones.start();
+    }
+
+    private void cerrarAplicacion() {
+        if (timerConexiones != null) {
+            timerConexiones.stop();
+        }
+
+        try {
+            fachadaServicios.detenerServidor();
+        } catch (RuntimeException e) {
+            System.err.println(
+                    "No se pudo detener el servidor: "
+                            + e.getMessage()
+            );
+        }
+
+        dispose();
+        System.exit(0);
     }
 
     private JPanel crearFilaLista(String texto, boolean seleccionada, Consumer<MouseEvent> onClick) {
@@ -419,12 +561,13 @@ public class VistaEscritorio extends JFrame implements IVista {
         String texto = txtMensaje.getText().trim();
         if (texto.isEmpty() || texto.equals(PLACEHOLDER)) return;
         MensajeProcesadoDTO m = crearTexto(ADMIN, destinatario, texto, LocalDateTime.now());
-        mensajes.add(m);
-        fachadaServicios.sendMensaje(m);
-        log("MENSAJE_ENVIADO: " + texto, ADMIN, destinatario, m.caracteres() + " letras, " + m.palabras() + " palabras");
-        txtMensaje.setText("");
+        MensajeProcesadoDTO guardado = fachadaServicios.sendMensaje(m);
+        mensajes.add(guardado);
+        log("MENSAJE_ENVIADO: " + texto, ADMIN, destinatario, guardado.caracteres() + " letras, " + guardado.palabras() + " palabras");
+        txtMensaje.setText(PLACEHOLDER);
+        txtMensaje.setForeground(Color.GRAY);
         mensajeSeleccionado = mensajes.size() - 1;
-        mostrarDetalle(m);
+        mostrarDetalle(guardado);
         btnMensajes.setSelected(true);
         refrescarLista();
     }
@@ -455,10 +598,11 @@ public class VistaEscritorio extends JFrame implements IVista {
             }
             MensajeProcesadoDTO m = new MensajeProcesadoDTO(siguienteId++, ADMIN, destinatario,
                     TipoContenido.IMAGEN, "", datos, f.getName(), sha256(datos), 0, 0, LocalDateTime.now());
-            mensajes.add(m);
+            MensajeProcesadoDTO guardado = fachadaServicios.sendMensaje(m);
+            mensajes.add(guardado);
             log("IMAGEN_ENVIADA", ADMIN, destinatario, f.getName());
             mensajeSeleccionado = mensajes.size() - 1;
-            mostrarDetalle(m);
+            mostrarDetalle(guardado);
             btnMensajes.setSelected(true);
             refrescarLista();
         } catch (Exception ex) {
@@ -470,6 +614,16 @@ public class VistaEscritorio extends JFrame implements IVista {
      * Vista previa de la imagen (doble clic sobre el mensaje).
      */
     private void verImagen(MensajeProcesadoDTO m) {
+        if (m.archivo() == null || m.archivo().length == 0) {
+            JOptionPane.showMessageDialog(
+                    this,
+                    "La imagen no está disponible para este mensaje.",
+                    "Imagen no disponible",
+                    JOptionPane.WARNING_MESSAGE
+            );
+            return;
+        }
+
         try {
             BufferedImage img = ImageIO.read(new ByteArrayInputStream(m.archivo()));
             if (img == null) return;
@@ -498,19 +652,32 @@ public class VistaEscritorio extends JFrame implements IVista {
     }
 
     private String resumen(MensajeProcesadoDTO m) {
-        String fecha = FECHA.format(m.fecha()).replace("AM", "am").replace("PM", "pm");
-        String contenido = m.tipo() == TipoContenido.IMAGEN ? "[Imagen] " + m.nombreArchivo() : m.texto();
+        LocalDateTime fechaHora = m.fecha() != null ? m.fecha() : LocalDateTime.now();
+        String fecha = FECHA.format(fechaHora).replace("AM", "am").replace("PM", "pm");
+        String contenido = m.tipo() == TipoContenido.IMAGEN
+                ? "[Imagen] " + m.nombreArchivo()
+                : (m.texto() != null ? m.texto() : "");
         return m.emisor() + ": " + contenido + "     : para " + m.receptor() + "  " + fecha;
     }
 
     private void mostrarDetalle(MensajeProcesadoDTO m) {
-        String hash = m.hash();
-        lblSha.setText("Sha256: " + hash.substring(0, Math.min(20, hash.length())) + "...");
-        lblSha.setToolTipText(hash);
+        String hash = m.hash() != null ? m.hash() : "";
+        String hashCorto = hash.isEmpty()
+                ? "No disponible"
+                : hash.substring(0, Math.min(20, hash.length())) + "...";
+
+        lblSha.setText("Sha256: " + hashCorto);
+        lblSha.setToolTipText(hash.isEmpty() ? null : hash);
         lblTipo.setText("Tipo: " + m.tipo());
+
         if (m.tipo() == TipoContenido.IMAGEN) {
-            int kb = m.archivo() == null ? 0 : Math.max(1, m.archivo().length / 1024);
-            lblLetras.setText("Tamaño: " + kb + " KB");
+            if (m.archivo() == null || m.archivo().length == 0) {
+                lblLetras.setText("Tamaño: no disponible");
+            } else {
+                int kb = Math.max(1, m.archivo().length / 1024);
+                lblLetras.setText("Tamaño: " + kb + " KB");
+            }
+
             lblPalabras.setText("Archivo: " + m.nombreArchivo());
             lblPalabras.setToolTipText(m.nombreArchivo());
         } else {
@@ -545,7 +712,8 @@ public class VistaEscritorio extends JFrame implements IVista {
     }
 
     private String resumenLog(LogEventoDTO l) {
-        StringBuilder sb = new StringBuilder(FECHA_LOG.format(l.fecha())).append("  ").append(l.evento());
+        String fecha = l.fecha() != null ? FECHA_LOG.format(l.fecha()) : "";
+        StringBuilder sb = new StringBuilder(fecha).append("  ").append(l.evento());
         if (l.emisor() != null || l.receptor() != null) {
             sb.append("  ").append(l.emisor() != null ? l.emisor() : "-")
                     .append(" > ").append(l.receptor() != null ? l.receptor() : "-");

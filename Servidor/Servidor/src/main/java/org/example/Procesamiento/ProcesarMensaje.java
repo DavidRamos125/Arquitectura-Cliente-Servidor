@@ -6,6 +6,7 @@ import org.example.DTORecords.MensajeProcesadoDTO;
 import org.example.Fachada.Factory;
 import org.example.PFabrica.Fabrica;
 import org.example.Persistencia.IPersistencia;
+import org.example.Persistencia.PersistenciaMemoria;
 import org.example.UtileriasVarias.TipoContenido;
 
 import java.io.File;
@@ -72,7 +73,11 @@ public class ProcesarMensaje {
             try {
                 persistencia = Factory.getPersistenciaImp();
             } catch (RuntimeException e) {
-                System.err.println("Persistencia no disponible: " + e.getMessage());
+                System.err.println(
+                        "Persistencia no disponible, usando memoria: "
+                                + e.getMessage()
+                );
+                persistencia = PersistenciaMemoria.getInstance();
             }
 
             almacenar = new ImpAlmacenarInformacion(persistencia);
