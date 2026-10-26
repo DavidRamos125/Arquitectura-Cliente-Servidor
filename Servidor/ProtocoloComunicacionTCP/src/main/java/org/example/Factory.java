@@ -1,5 +1,6 @@
 package org.example;
 
+import java.io.IOException;
 import java.net.Socket;
 
 public class Factory {
@@ -8,6 +9,10 @@ public class Factory {
     }
 
     public static IConexion getConexion(Socket conexion){
-        return new ConexionTCP(conexion);
+        try {
+            return new ConexionTCP(conexion);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 }

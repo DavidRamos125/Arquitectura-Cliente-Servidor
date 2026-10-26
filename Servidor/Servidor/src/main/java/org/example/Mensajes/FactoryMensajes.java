@@ -1,5 +1,7 @@
 package org.example.Mensajes;
 
+import org.example.AlmacenarInformacion.FactoryAlmacenarInformacion;
+
 public class FactoryMensajes {
 
     private static IMensajes instancia;

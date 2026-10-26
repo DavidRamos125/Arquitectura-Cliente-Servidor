@@ -1,4 +1,17 @@
 package org.example;
 
-public class MensajeDTO {
+import java.time.LocalDateTime;
+
+public record MensajeDTO(
+        long id,
+        String emisor,
+        String receptor,
+        TipoContenido tipo,
+        String texto,
+        byte[] archivo,
+        String nombreArchivo,
+        String hash,
+        int caracteres,
+        int palabras,
+        LocalDateTime fecha) {
 }

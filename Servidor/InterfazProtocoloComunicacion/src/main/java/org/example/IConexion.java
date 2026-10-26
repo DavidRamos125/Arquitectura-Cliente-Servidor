@@ -1,7 +1,12 @@
 package org.example;
 
+import java.io.IOException;
+
 public interface IConexion {
-    String recibir();
-    void enviar(String mensaje);
-    void desconectar();
+
+    void enviar(byte[] datos) throws IOException;
+
+    byte[] recibir() throws IOException;
+
+    void desconectar() throws IOException;
 }
