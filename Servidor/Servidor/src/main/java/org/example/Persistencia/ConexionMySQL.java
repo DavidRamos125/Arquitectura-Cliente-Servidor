@@ -35,6 +35,18 @@ public class ConexionMySQL {
             )
             """;
 
+    private static final String CREAR_TABLA_ARCHIVOS = """
+            CREATE TABLE IF NOT EXISTS archivos (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                mensaje_id BIGINT NOT NULL,
+                variante VARCHAR(30) NOT NULL,
+                nombre_archivo VARCHAR(255) NOT NULL,
+                ruta VARCHAR(1000) NOT NULL,
+                fecha DATETIME NOT NULL,
+                INDEX idx_archivos_mensaje (mensaje_id)
+            )
+            """;
+
     private final String url;
     private final String usuario;
     private final String contrasena;
@@ -62,6 +74,7 @@ public class ConexionMySQL {
              Statement statement = conexion.createStatement()) {
             statement.execute(CREAR_TABLA_MENSAJES);
             statement.execute(CREAR_TABLA_LOGS);
+            statement.execute(CREAR_TABLA_ARCHIVOS);
         } catch (SQLException e) {
             throw new RuntimeException("No se pudo inicializar la base de datos: " + e.getMessage(), e);
         }

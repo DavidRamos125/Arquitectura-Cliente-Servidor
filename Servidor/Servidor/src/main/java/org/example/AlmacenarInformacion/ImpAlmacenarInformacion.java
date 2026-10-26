@@ -1,5 +1,6 @@
 package org.example.AlmacenarInformacion;
 
+import org.example.DTORecords.ArchivoDTO;
 import org.example.DTORecords.LogEventoDTO;
 import org.example.DTORecords.MensajeProcesadoDTO;
 import org.example.Persistencia.IPersistencia;
@@ -60,8 +61,29 @@ public class ImpAlmacenarInformacion implements IAlmacenarInformacion {
     }
 
     @Override
-    public void guardarMensaje(MensajeProcesadoDTO mensaje) {
-        persistencia.guardarMensaje(mensaje);
+    public ArchivoDTO guardarArchivoDeMensaje(long mensajeId, String usuario, String variante,
+                                              String nombreArchivo, byte[] contenido) {
+        String ruta = guardarArchivo(usuario, nombreArchivo, contenido);
+        String nombreGuardado = Path.of(ruta).getFileName().toString();
+        LocalDateTime fecha = LocalDateTime.now();
+        ArchivoDTO sinId = new ArchivoDTO(0, mensajeId, variante, nombreGuardado, ruta, fecha);
+        long id = persistencia.registrarArchivo(sinId);
+        return new ArchivoDTO(id, mensajeId, variante, nombreGuardado, ruta, fecha);
+    }
+
+    @Override
+    public List<ArchivoDTO> listarArchivosDeMensaje(long mensajeId) {
+        return persistencia.listarArchivosPorMensaje(mensajeId);
+    }
+
+    @Override
+    public List<ArchivoDTO> listarArchivos() {
+        return persistencia.listarArchivos();
+    }
+
+    @Override
+    public long guardarMensaje(MensajeProcesadoDTO mensaje) {
+        return persistencia.guardarMensaje(mensaje);
     }
 
     @Override
@@ -85,6 +107,9 @@ public class ImpAlmacenarInformacion implements IAlmacenarInformacion {
         }
         String soloNombre = valor.substring(Math.max(valor.lastIndexOf('/'), valor.lastIndexOf('\\')) + 1);
         String limpio = soloNombre.replaceAll("[^A-Za-z0-9._-]", "_");
+        if (limpio.length() > 150) {
+            limpio = limpio.substring(limpio.length() - 150);
+        }
         if (limpio.isEmpty() || limpio.matches("\\.+")) {
             return "sin_nombre";
         }

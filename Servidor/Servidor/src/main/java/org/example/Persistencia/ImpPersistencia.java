@@ -1,5 +1,6 @@
 package org.example.Persistencia;
 
+import org.example.DTORecords.ArchivoDTO;
 import org.example.DTORecords.LogEventoDTO;
 import org.example.DTORecords.MensajeProcesadoDTO;
 import org.example.UtileriasVarias.TipoContenido;
@@ -23,11 +24,11 @@ public class ImpPersistencia implements IPersistencia {
     }
 
     @Override
-    public void guardarMensaje(MensajeProcesadoDTO mensaje) {
+    public long guardarMensaje(MensajeProcesadoDTO mensaje) {
         String sql = "INSERT INTO mensajes (emisor, receptor, tipo, texto, nombre_archivo, hash, "
                 + "caracteres, palabras, fecha) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
         try (Connection c = conexion.obtener();
-             PreparedStatement ps = c.prepareStatement(sql)) {
+             PreparedStatement ps = c.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             ps.setString(1, mensaje.emisor());
             ps.setString(2, mensaje.receptor());
             ps.setString(3, mensaje.tipo().name());
@@ -39,6 +40,12 @@ public class ImpPersistencia implements IPersistencia {
             ps.setTimestamp(9, Timestamp.valueOf(
                     mensaje.fecha() != null ? mensaje.fecha() : LocalDateTime.now()));
             ps.executeUpdate();
+            try (ResultSet claves = ps.getGeneratedKeys()) {
+                if (claves.next()) {
+                    return claves.getLong(1);
+                }
+            }
+            throw new SQLException("MySQL no devolvió el id del mensaje");
         } catch (SQLException e) {
             throw new RuntimeException("No se pudo guardar el mensaje: " + e.getMessage(), e);
         }
@@ -109,5 +116,65 @@ public class ImpPersistencia implements IPersistencia {
             throw new RuntimeException("No se pudieron listar los logs: " + e.getMessage(), e);
         }
         return logs;
+    }
+
+    @Override
+    public long registrarArchivo(ArchivoDTO archivo) {
+        String sql = "INSERT INTO archivos (mensaje_id, variante, nombre_archivo, ruta, fecha) "
+                + "VALUES (?, ?, ?, ?, ?)";
+        try (Connection c = conexion.obtener();
+             PreparedStatement ps = c.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+            ps.setLong(1, archivo.mensajeId());
+            ps.setString(2, archivo.variante());
+            ps.setString(3, archivo.nombreArchivo());
+            ps.setString(4, archivo.ruta());
+            ps.setTimestamp(5, Timestamp.valueOf(
+                    archivo.fecha() != null ? archivo.fecha() : LocalDateTime.now()));
+            ps.executeUpdate();
+            try (ResultSet claves = ps.getGeneratedKeys()) {
+                if (claves.next()) {
+                    return claves.getLong(1);
+                }
+            }
+            throw new SQLException("MySQL no devolvió el id del archivo");
+        } catch (SQLException e) {
+            throw new RuntimeException("No se pudo registrar el archivo: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public List<ArchivoDTO> listarArchivos() {
+        return consultarArchivos("SELECT id, mensaje_id, variante, nombre_archivo, ruta, fecha "
+                + "FROM archivos ORDER BY id", null);
+    }
+
+    @Override
+    public List<ArchivoDTO> listarArchivosPorMensaje(long mensajeId) {
+        return consultarArchivos("SELECT id, mensaje_id, variante, nombre_archivo, ruta, fecha "
+                + "FROM archivos WHERE mensaje_id = ? ORDER BY id", mensajeId);
+    }
+
+    private List<ArchivoDTO> consultarArchivos(String sql, Long mensajeId) {
+        List<ArchivoDTO> archivos = new ArrayList<>();
+        try (Connection c = conexion.obtener();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+            if (mensajeId != null) {
+                ps.setLong(1, mensajeId);
+            }
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    archivos.add(new ArchivoDTO(
+                            rs.getLong("id"),
+                            rs.getLong("mensaje_id"),
+                            rs.getString("variante"),
+                            rs.getString("nombre_archivo"),
+                            rs.getString("ruta"),
+                            rs.getTimestamp("fecha").toLocalDateTime()));
+                }
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("No se pudieron listar los archivos: " + e.getMessage(), e);
+        }
+        return archivos;
     }
 }

@@ -1,5 +1,6 @@
 package org.example.AlmacenarInformacion;
 
+import org.example.DTORecords.ArchivoDTO;
 import org.example.DTORecords.LogEventoDTO;
 import org.example.DTORecords.MensajeProcesadoDTO;
 
@@ -10,7 +11,12 @@ public interface IAlmacenarInformacion {
     String guardarTexto(String usuario, String nombreArchivo, String texto);
     byte[] leerArchivo(String ruta);
 
-    void guardarMensaje(MensajeProcesadoDTO mensaje);
+    ArchivoDTO guardarArchivoDeMensaje(long mensajeId, String usuario, String variante,
+                                       String nombreArchivo, byte[] contenido);
+    List<ArchivoDTO> listarArchivosDeMensaje(long mensajeId);
+    List<ArchivoDTO> listarArchivos();
+
+    long guardarMensaje(MensajeProcesadoDTO mensaje);
     void guardarLog(LogEventoDTO log);
     List<MensajeProcesadoDTO> listarMensajes();
     List<LogEventoDTO> listarLogs();
