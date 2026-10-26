@@ -8,8 +8,8 @@ import java.util.Properties;
 
 public class UtilPersistencia {
 
-    private static final String RUTA_EXTERNA = "./resources/config/persistencia.properties";
-    private static final String RUTA_CLASSPATH = "/config/persistencia.properties";
+    private static final String RUTA_EXTERNA = "./resources/config/config.properties";
+    private static final String RUTA_CLASSPATH = "/config/config.properties";
     private static final Properties properties = new Properties();
 
     static {

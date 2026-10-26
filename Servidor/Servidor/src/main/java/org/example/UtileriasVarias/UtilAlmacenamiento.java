@@ -8,8 +8,8 @@ import java.util.Properties;
 
 public class UtilAlmacenamiento {
 
-    private static final String RUTA_EXTERNA = "./resources/config/almacenamiento.properties";
-    private static final String RUTA_CLASSPATH = "/config/almacenamiento.properties";
+    private static final String RUTA_EXTERNA = "./resources/config/config.properties";
+    private static final String RUTA_CLASSPATH = "/config/config.properties";
     private static final Properties properties = new Properties();
 
     static {
