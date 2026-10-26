@@ -10,7 +10,7 @@ public class ProtocoloComunicacionTCP implements IProtocoloComunicacion {
     private final int puerto;
 
     private ProtocoloComunicacionTCP() {
-        this.puerto = Integer.parseInt(Util.getProperty("tcp.puerto"));
+        this.puerto = Integer.parseInt(ProtocoloConfig.getProperty("tcp.puerto"));
     }
 
     public static synchronized ProtocoloComunicacionTCP getInstance() {
@@ -70,5 +70,11 @@ public class ProtocoloComunicacionTCP implements IProtocoloComunicacion {
                 );
             }
         }
+    }
+
+    @Override
+    public boolean estaActivo() {
+        ServerSocket servidor = listener;
+        return servidor != null && !servidor.isClosed();
     }
 }

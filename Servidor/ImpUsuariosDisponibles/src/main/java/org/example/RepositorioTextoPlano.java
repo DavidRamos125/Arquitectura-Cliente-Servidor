@@ -7,12 +7,12 @@ public class RepositorioTextoPlano implements RepositorioUsuario {
     private final String ruta;
 
     public RepositorioTextoPlano(){
-        this.ruta = Util.getProperty("textoPlano.ruta");
+        this.ruta = UsuariosUtil.getProperty("textoPlano.ruta");
     }
 
     @Override
     public List<UsuarioDTO> getUsuariosDisponibles() {
-        List<String> usuariosPlano = Util.getLines(ruta);
+        List<String> usuariosPlano = UsuariosUtil.getLines(ruta);
         List<UsuarioDTO> usuarios = new ArrayList<>();
 
         for(String usuario: usuariosPlano){

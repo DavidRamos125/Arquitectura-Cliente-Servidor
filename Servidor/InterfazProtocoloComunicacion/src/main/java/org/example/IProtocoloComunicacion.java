@@ -4,4 +4,5 @@ public interface IProtocoloComunicacion {
     IConexion escuchar();
     void iniciar();
     void detener();
+    boolean estaActivo();
 }
