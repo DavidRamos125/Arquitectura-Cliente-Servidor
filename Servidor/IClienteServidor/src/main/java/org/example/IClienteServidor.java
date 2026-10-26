@@ -1,6 +1,7 @@
 package org.example;
 
 public interface IClienteServidor {
-    String construirPaquete(MensajeDTO mensaje);
-    MensajeDTO obtenerMensaje(String mensaje);
+
+    byte[] construir(Paquete paquete);
+    Paquete obtener(byte[] datos);
 }

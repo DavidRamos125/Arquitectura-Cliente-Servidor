@@ -1,102 +1,86 @@
-
 package org.example;
 
-import java.io.BufferedReader;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
 import java.net.Socket;
-import java.nio.charset.StandardCharsets;
 
 public class ConexionTCP implements IConexion {
 
-    private Socket conexion;
-    private BufferedReader lector;
-    private PrintWriter escritor;
+    private static final int TAMANO_MAXIMO_MENSAJE =
+            16 * 1024 * 1024; // 16 MiB
 
-    public ConexionTCP() {
-    }
+    private final Socket conexion;
+    private final DataInputStream entrada;
+    private final DataOutputStream salida;
+    private final Object bloqueoEscritura = new Object();
 
-    public ConexionTCP(Socket conexion) {
-        conectar(conexion);
-    }
+    public ConexionTCP(Socket conexion) throws IOException {
+        this.conexion = conexion;
 
-    private void conectar(Socket socket) {
-        try {
-            this.conexion = socket;
+        this.entrada = new DataInputStream(
+                conexion.getInputStream()
+        );
 
-            this.lector = new BufferedReader(
-                    new InputStreamReader(
-                            socket.getInputStream(),
-                            StandardCharsets.UTF_8
-                    )
-            );
-
-            this.escritor = new PrintWriter(
-                    socket.getOutputStream(),
-                    true,
-                    StandardCharsets.UTF_8
-            );
-
-        } catch (IOException e) {
-            try {
-                socket.close();
-            } catch (IOException ignored) {
-                // Se conserva la excepción original
-            }
-
-            throw new IllegalStateException(
-                    "No se pudo inicializar la conexión TCP", e
-            );
-        }
+        this.salida = new DataOutputStream(
+                conexion.getOutputStream()
+        );
     }
 
     @Override
-    public String recibir() {
+    public void enviar(byte[] datos)
+            throws IOException {
+
         comprobarConexion();
 
-        try {
-            // Lee hasta encontrar un salto de línea.
-            return lector.readLine();
-        } catch (IOException e) {
-            throw new IllegalStateException(
-                    "Error al recibir un mensaje TCP", e
+        if (datos == null) {
+            throw new IllegalArgumentException(
+                    "Los datos no pueden ser null"
             );
+        }
+
+        if (datos.length > TAMANO_MAXIMO_MENSAJE) {
+            throw new IOException(
+                    "El mensaje supera el tamaño máximo permitido"
+            );
+        }
+
+        synchronized (bloqueoEscritura) {
+            salida.writeInt(datos.length);
+            salida.write(datos);
+            salida.flush();
         }
     }
 
     @Override
-    public void enviar(String mensaje) {
+    public byte[] recibir() throws IOException {
         comprobarConexion();
 
-        escritor.println(mensaje);
+        int longitud = entrada.readInt();
 
-        if (escritor.checkError()) {
-            throw new IllegalStateException(
-                    "Error al enviar el mensaje TCP"
+        if (longitud < 0 ||
+                longitud > TAMANO_MAXIMO_MENSAJE) {
+
+            throw new IOException(
+                    "Longitud de mensaje no válida: " + longitud
             );
         }
+
+        byte[] datos = new byte[longitud];
+
+        entrada.readFully(datos);
+
+        return datos;
     }
 
     @Override
-    public void desconectar() {
-        if (conexion == null || conexion.isClosed()) {
-            return;
-        }
-
-        try {
-            conexion.close();
-        } catch (IOException e) {
-            throw new IllegalStateException(
-                    "Error al cerrar la conexión TCP", e
-            );
-        }
+    public void desconectar() throws IOException {
+        conexion.close();
     }
 
-    private void comprobarConexion() {
-        if (conexion == null || conexion.isClosed()
-                || !conexion.isConnected()) {
-            throw new IllegalStateException(
+    private void comprobarConexion() throws IOException {
+        if (conexion.isClosed() || !conexion.isConnected()) {
+            throw new IOException(
                     "La conexión TCP no está disponible"
             );
         }
